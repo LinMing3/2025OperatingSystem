@@ -28,7 +28,7 @@ void bootMain(void) {
 	for (i = 0; i < 200; i++) {
 		readSect((void*)(elf + i*512), 1+i);
 	}
-
+	kMainEntry = (void(*)(void))(((struct ELFHeader *)elf)->entry);
 	for (i = 0; i < 200 * 512; i++) {
 		*(unsigned char *)(elf + i) = *(unsigned char *)(elf + i + offset);
 	}
