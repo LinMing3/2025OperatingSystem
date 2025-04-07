@@ -26,6 +26,7 @@ start:
 
 
     data32 ljmp $0x08, $start32 
+    
 .code32
 start32:
 

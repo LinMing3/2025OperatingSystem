@@ -19,7 +19,7 @@ void bootMain(void) {
 	// TODO: 填写kMainEntry、phoff、offset
 	// gcc版本较高不需要填写 phoff 和 offset
 	int i = 0;
-	int phoff = 0x34; //gcc版本较高请注释掉此行
+	//int phoff = 0x34; //gcc版本较高请注释掉此行
 	int offset = 0x1000; 
 	unsigned int elf = 0x100000;
 	void (*kMainEntry)(void);
@@ -28,7 +28,9 @@ void bootMain(void) {
 	for (i = 0; i < 200; i++) {
 		readSect((void*)(elf + i*512), 1+i);
 	}
+
 	kMainEntry = (void(*)(void))(((struct ELFHeader *)elf)->entry);
+	
 	for (i = 0; i < 200 * 512; i++) {
 		*(unsigned char *)(elf + i) = *(unsigned char *)(elf + i + offset);
 	}

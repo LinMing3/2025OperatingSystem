@@ -3,6 +3,7 @@
         "x86.h": "c",
         "device.h": "c",
         "lib.h": "c",
-        "types.h": "c"
+        "types.h": "c",
+        "serial.h": "c"
     }
 }

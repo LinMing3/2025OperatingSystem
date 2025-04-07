@@ -5,7 +5,7 @@
 void kEntry(void) {
 
 	// Interruption is disabled in bootloader
-
+	log("kernel entry\n");
 	initSerial();// initialize serial port
 
 	// TODO: 做一系列初始化
@@ -15,7 +15,7 @@ void kEntry(void) {
 	initVga();	 // initialize vga device
 	initKeyTable(); // initialize keyboard device
 	loadUMain(); // load user program, enter user space
-
-	while(1);
+	log("kernel init end\n");
+	while (1);
 	assert(0);
 }
