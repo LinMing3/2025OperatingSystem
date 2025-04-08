@@ -4,6 +4,7 @@
         "device.h": "c",
         "lib.h": "c",
         "types.h": "c",
-        "serial.h": "c"
+        "serial.h": "c",
+        "assert.h": "c"
     }
 }

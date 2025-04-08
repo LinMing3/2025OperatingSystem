@@ -26,7 +26,6 @@ int32_t syscall(int num, uint32_t a1, uint32_t a2,
 	*/
 	uint32_t eax, ecx, edx, ebx, esi, edi;
 	uint16_t selector;
-
 	asm volatile("movl %%eax, %0" : "=m"(eax));
 	asm volatile("movl %%ecx, %0" : "=m"(ecx));
 	asm volatile("movl %%edx, %0" : "=m"(edx));
@@ -56,21 +55,17 @@ int32_t syscall(int num, uint32_t a1, uint32_t a2,
 }
 
 char getChar()
-{ // 对应SYS_READ STD_IN
-  // TODO: 实现getChar函数，方式不限
-  return (char)syscall(SYS_READ, STD_IN, 0, 0, 0, 0);
+{ 	
+	// 对应SYS_READ STD_IN
+  	// TODO: 实现getChar函数，方式不限
+  	return (char)syscall(SYS_READ, STD_IN, 0, 0, 0, 0);
 }
 
 void getStr(char *str, int size)
-{ // 对应SYS_READ STD_STR
+{ 	// 对应SYS_READ STD_STR
 	// TODO: 实现getStr函数，方式不限
 	syscall(SYS_READ, STD_STR, (uint32_t)str, (uint32_t)size, 0, 0);
-	// 确保字符串以 '\0' 结尾
-	if (size > 0)
-	{
-		str[size - 1] = '\0';
-	}
-	return;
+	
 }
 
 int dec2Str(int decimal, char *buffer, int size, int count);
@@ -78,71 +73,90 @@ int hex2Str(uint32_t hexadecimal, char *buffer, int size, int count);
 int str2Str(char *string, char *buffer, int size, int count);
 
 void printf(const char *format, ...)
-{
+{	
 	int i = 0; // format index
 	char buffer[MAX_BUFFER_SIZE];
 	int count = 0;					  // buffer index
-	//int index = 0;					  // parameter index
+	// int index = 0;					  // parameter index
 	void *paraList = (void *)&format; // address of format in stack
-	int state = 0;					  // 0: legal character; 1: '%'; 2: illegal format
-	int decimal = 0;
-	uint32_t hexadecimal = 0;
-	char *string = 0;
-	char character = 0;
+	paraList += 4;
+	// int state = 0;					  // 0: legal character; 1: '%'; 2: illegal format
+	// int decimal = 0;
+	// uint32_t hexadecimal = 0;
+	// char *string = 0;
+	// char character = 0;
 	while (format[i] != 0)
 	{
-		// buffer[count] = format[i];
-		// count++;
-		// TODO: in lab2
-		if (state == 0)
-		{ // 普通字符状态
-			if (format[i] == '%')
-			{
-				state = 1; // 遇到 '%'，切换到格式化标志解析状态
-			}
-			else
-			{
-				buffer[count++] = format[i]; // 普通字符存入缓冲区
-			}
-		}
-		else if (state == 1)
-		{ // 格式化标志解析状态
+		if (format[i] == '%')
+		{
+			i++;
 			switch (format[i])
 			{
-			case 'd':													  // 十进制整数
-				decimal = *((int *)(paraList += 4));					  // 获取参数
-				count = dec2Str(decimal, buffer, MAX_BUFFER_SIZE, count); // 转换为字符串并存入缓冲区
-				state = 0;												  // 恢复到普通字符状态
-				break;
-			case 'x':														  // 十六进制整数
-				hexadecimal = *((uint32_t *)(paraList += 4));				  // 获取参数
-				count = hex2Str(hexadecimal, buffer, MAX_BUFFER_SIZE, count); // 转换为字符串并存入缓冲区
-				state = 0;													  // 恢复到普通字符状态
-				break;
-			case 's':													 // 字符串
-				string = *((char **)(paraList += 4));					 // 获取参数
-				count = str2Str(string, buffer, MAX_BUFFER_SIZE, count); // 将字符串存入缓冲区
-				state = 0;												 // 恢复到普通字符状态
-				break;
-			case 'c':									// 单个字符
-				character = *((char *)(paraList += 4)); // 获取参数
-				buffer[count++] = character;			// 存入缓冲区
-				state = 0;								// 恢复到普通字符状态
-				break;
-			default:						 // 非法格式
-				buffer[count++] = '%';		 // 输出 '%'
-				buffer[count++] = format[i]; // 输出非法格式字符
-				state = 0;					 // 恢复到普通字符状态
+			case 'd':
+			{ // 十进制整数
+				int decimal = *(int *)paraList;
+				paraList += 4;
+				count = dec2Str(decimal, buffer, MAX_BUFFER_SIZE, count);
 				break;
 			}
+			case 'x':
+			{ // 十六进制整数
+				uint32_t hexadecimal = *(uint32_t *)paraList;
+				paraList += 4;
+				count = hex2Str(hexadecimal, buffer, MAX_BUFFER_SIZE, count);
+				break;
+			}
+			case 's':
+			{ // 字符串
+				char *string = *(char **)paraList;
+				paraList += 4;
+				count = str2Str(string, buffer, MAX_BUFFER_SIZE, count);
+				break;
+			}
+			case 'c':
+			{ // 单个字符
+				char character = *(char *)paraList;
+				paraList += 4;
+				buffer[count] = character;
+				count++;
+				if (count == MAX_BUFFER_SIZE)
+				{
+					syscall(SYS_WRITE, STD_OUT, (uint32_t)buffer, (uint32_t)count, 0, 0);
+					count = 0;
+				}
+				break;
+			}
+			default:
+			{ // 非法格式
+				buffer[count] = '%';
+				count++;
+				if (count == MAX_BUFFER_SIZE)
+				{
+					syscall(SYS_WRITE, STD_OUT, (uint32_t)buffer, (uint32_t)count, 0, 0);
+					count = 0;
+				}
+				buffer[count] = format[i];
+				count++;
+				if (count == MAX_BUFFER_SIZE)
+				{
+					syscall(SYS_WRITE, STD_OUT, (uint32_t)buffer, (uint32_t)count, 0, 0);
+					count = 0;
+				}
+				break;
+			}
+			}
 		}
-
-		// 如果缓冲区满，输出缓冲区内容
-		if (count == MAX_BUFFER_SIZE)
+		else
 		{
-			syscall(SYS_WRITE, STD_OUT, (uint32_t)buffer, (uint32_t)count, 0, 0);
-			count = 0; // 重置缓冲区索引
+			buffer[count] = format[i];
+			count++;
+			if (count == MAX_BUFFER_SIZE)
+			{
+				syscall(SYS_WRITE, STD_OUT, (uint32_t)buffer, (uint32_t)count, 0, 0);
+				count = 0;
+			}
 		}
+		i++;
 	}
 	if (count != 0)
 		syscall(SYS_WRITE, STD_OUT, (uint32_t)buffer, (uint32_t)count, 0, 0);

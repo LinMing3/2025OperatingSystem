@@ -14,8 +14,9 @@ void kEntry(void) {
 	initSeg();	 // initialize gdt, tss
 	initVga();	 // initialize vga device
 	initKeyTable(); // initialize keyboard device
-	loadUMain(); // load user program, enter user space
 	log("kernel init end\n");
+	loadUMain(); // load user program, enter user space
+	
 	while (1);
 	assert(0);
 }

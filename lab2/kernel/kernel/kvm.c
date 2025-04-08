@@ -64,11 +64,11 @@ void loadUMain(void) {
 	int offset = 0x1000;
 	unsigned int elf = 0x200000;
 	void (*uMainEntry)(void);
-	uMainEntry = (void (*)(void))0x200000;
+
 
 	for (i = 0; i < 200; i++)
 	{
-		readSect((void *)(elf + i * 512), 1 + i);
+		readSect((void *)(elf + i * 512), 201 + i);//逆天201给我气得受不了
 	}
 
 	uMainEntry = (void (*)(void))(((struct ELFHeader *)elf)->entry);

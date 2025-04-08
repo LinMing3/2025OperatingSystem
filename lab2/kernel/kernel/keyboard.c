@@ -96,6 +96,8 @@ uint32_t keyBuffer[MAX_KEYBUFFER_SIZE];
 int bufferHead;
 int bufferTail;
 
+int inGetChar;
+
 static char keyTableL[KEYTABLE_SIZE];
 static char keyTableU[KEYTABLE_SIZE];
 static char *keyTable;

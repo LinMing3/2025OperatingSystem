@@ -7,7 +7,6 @@ int uEntry(void) {
 	//uint16_t selector = 16;
 	asm volatile("movw %%ss, %0":"=m"(selector)); //XXX necessary or not, iret may reset ds in QEMU
 	asm volatile("movw %%ax, %%ds"::"a"(selector));
-
 	printf("I/O test begin...\n");
 	printf("the answer should be:\n");
 	printf("#######################################################\n");
