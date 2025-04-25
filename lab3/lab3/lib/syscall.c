@@ -232,16 +232,19 @@ int str2Str(char *string, char *buffer, int size, int count) {
 }
 
 pid_t fork() {
+	//TODO
 	return syscall(SYS_FORK, 0, 0, 0, 0, 0);
 }
 
 
 int sleep(uint32_t time) {
-	return 0;
+	//TODO
+	return syscall(SYS_SLEEP, time, 0, 0, 0, 0);
 }
 
 int exit() {
-	return 0;
+	//TODO
+	return syscall(SYS_EXIT, 0, 0, 0, 0, 0);
 }
 
 

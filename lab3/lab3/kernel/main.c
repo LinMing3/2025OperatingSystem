@@ -5,6 +5,7 @@
 void kEntry(void) {
 
 	// Interruption is disabled in bootloader
+	log("kentry\n");
 
 	initSerial();// initialize serial port
 	initIdt(); // initialize idt

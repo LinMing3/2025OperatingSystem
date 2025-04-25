@@ -1,0 +1,8 @@
+#compile
+*.o
+*.out
+*.exe
+
+#dir
+/.vscode
+/.idea

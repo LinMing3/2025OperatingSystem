@@ -67,6 +67,8 @@ struct ProcessTable {
 	char name[32];
 };
 typedef struct ProcessTable ProcessTable;
+extern struct ProcessTable pcb[]; // pcb
+extern int current;				   // current process
 
 /*
 1. The number of bits in a bit field sets the limit to the range of values it can hold
@@ -90,6 +92,7 @@ struct SegDesc {
 	uint32_t base_31_24 : 8; // High bits of segment base address
 };
 typedef struct SegDesc SegDesc;
+extern struct SegDesc gdt[]; // gdt
 
 #define SEG(type, base, lim, dpl) (SegDesc)                   \
 {	((lim) >> 12) & 0xffff, (uint32_t)(base) & 0xffff,        \
@@ -118,6 +121,7 @@ struct TSS {
         };
 };
 typedef struct TSS TSS;
+extern struct TSS tss; // tss
 
 static inline void setGdt(SegDesc *gdt, uint32_t size) {
 	volatile static uint16_t data[3];
