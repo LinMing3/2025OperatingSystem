@@ -259,13 +259,13 @@ void syscallFork(struct StackFrame *sf)
 		return;
 	}
 
-	enableInterrupt();
+	// enableInterrupt();
 	for (int j = 0; j < 0x100000; j++)
 	{
 		*(uint8_t *)(j + (child + 1) * 0x100000) = *(uint8_t *)(j + (current + 1) * 0x100000);
 		// asm volatile("int $0x20"); //XXX Testing irqTimer during syscall
 	}
-	disableInterrupt();
+	// disableInterrupt();
 
 	for (int j = 0; j < sizeof(ProcessTable); ++j)
 		*((uint8_t *)(&pcb[child]) + j) = *((uint8_t *)(&pcb[current]) + j);
@@ -273,12 +273,12 @@ void syscallFork(struct StackFrame *sf)
 	pcb[child].stackTop = (uint32_t)&(pcb[child].regs);
 	pcb[child].prevStackTop = (uint32_t)&(pcb[child].stackTop);
 
-	pcb[child].regs.ss = USEL(4 * child);
-	pcb[child].regs.cs = USEL(3 * child);
-	pcb[child].regs.ds = USEL(4 * child);
-	pcb[child].regs.es = USEL(4 * child);
-	pcb[child].regs.fs = USEL(4 * child);
-	pcb[child].regs.gs = USEL(4 * child);
+	pcb[child].regs.ss = USEL(2+2 * child);
+	pcb[child].regs.cs = USEL(1+2 * child);
+	pcb[child].regs.ds = USEL(2+2 * child);
+	pcb[child].regs.es = USEL(2+2 * child);
+	pcb[child].regs.fs = USEL(2+2 * child);
+	pcb[child].regs.gs = USEL(2+2 * child);
 
 	pcb[child].pid = child;			   // 分配新的 PID
 	pcb[child].state = STATE_RUNNABLE; // 子进程初始状态为可运行
