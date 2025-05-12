@@ -6,6 +6,14 @@
         "types.h": "c",
         "serial.h": "c",
         "assert.h": "c",
-        "timer.h": "c"
+        "timer.h": "c",
+        "vga.h": "c",
+        "disk.h": "c",
+        "keyboard.h": "c",
+        "cpu.h": "c",
+        "memory.h": "c",
+        "io.h": "c",
+        "irq.h": "c",
+        "cstdio": "c"
     }
 }

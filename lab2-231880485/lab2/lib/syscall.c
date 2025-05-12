@@ -72,6 +72,8 @@ int dec2Str(int decimal, char *buffer, int size, int count);
 int hex2Str(uint32_t hexadecimal, char *buffer, int size, int count);
 int str2Str(char *string, char *buffer, int size, int count);
 
+
+
 void printf(const char *format, ...)
 {	
 	int i = 0; // format index

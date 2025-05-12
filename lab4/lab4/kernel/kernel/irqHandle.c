@@ -141,16 +141,28 @@ void timerHandle(struct StackFrame *sf) {
 }
 
 void keyboardHandle(struct StackFrame *sf) {
+	log("keyboardHandle\n");
 	ProcessTable *pt = NULL;
 	uint32_t keyCode = getKeyCode();
 	if (keyCode == 0) // illegal keyCode
 		return;
-	//putChar(getChar(keyCode));
+	
+	// putChar(getChar(keyCode));
 	keyBuffer[bufferTail] = keyCode;
 	bufferTail=(bufferTail+1)%MAX_KEYBUFFER_SIZE;
 
 	if (dev[STD_IN].value < 0) { // with process blocked
 		// TODO: deal with blocked situation
+		// 获取阻塞队列中的第一个进程控制块
+		pt = (ProcessTable *)((uint32_t)(dev[STD_IN].pcb.prev) - (uint32_t)&(((ProcessTable *)0)->blocked));
+		dev[STD_IN].pcb.prev = dev[STD_IN].pcb.prev->prev;
+		dev[STD_IN].pcb.prev->next = &(dev[STD_IN].pcb);
+
+		// 调整设备value值（减少阻塞进程计数）
+		dev[STD_IN].value++;
+
+		// 唤醒进程
+		pt->state = STATE_RUNNABLE;
 	}
 
 	return;
@@ -246,7 +258,65 @@ void syscallRead(struct StackFrame *sf) {
 }
 
 void syscallReadStdIn(struct StackFrame *sf) {
-	// TODO: complete `stdin`
+	//TODO: complete `syscallReadStdIn`
+    int sel = sf->ds; // segment selector for user data, need further modification
+	char *str = (char*)sf->edx;
+	int size = sf->ebx;
+	int i = 0;
+	char character = 0;
+
+	asm volatile("movw %0, %%es"::"m"(sel));
+
+	if(bufferHead == bufferTail) { // 缓冲区为空
+		if(dev[STD_IN].value<0){ // 有进程阻塞在设备上
+			sf->eax = -1;
+			return;
+		}
+		else {	// 没有进程阻塞在设备上
+			// 将当前进程加入等待队列
+			pcb[current].blocked.next = dev[STD_IN].pcb.next;
+			pcb[current].blocked.prev = &(dev[STD_IN].pcb);
+			dev[STD_IN].pcb.next->prev = &(pcb[current].blocked);
+			dev[STD_IN].pcb.next = &(pcb[current].blocked);
+
+			// 调整设备value值（增加阻塞进程计数）
+			dev[STD_IN].value--;
+
+			// 阻塞当前进程
+			pcb[current].state = STATE_BLOCKED;
+
+			// 触发中断，切换到其他进程
+			asm volatile("int $0x20");
+		}
+	}
+
+	i = 0;
+	while (i < size && bufferHead != bufferTail) {
+		// 从键盘缓冲区获取一个字符
+		uint32_t keyCode = keyBuffer[bufferHead];
+		bufferHead = (bufferHead + 1) % MAX_KEYBUFFER_SIZE;
+
+		// 将键码转换为ASCII字符
+		character = getChar(keyCode);
+
+		// 如果是有效字符，存入用户提供的缓冲区
+		if (character != 0)
+		{
+			asm volatile("movb %0, %%es:(%1)" ::"r"(character), "r"(str + i));
+			i++;
+
+			// 如果是换行符，停止读取
+			if (character == '\n')
+			{
+				break;
+			}
+		}
+	}
+
+	sf->eax = i; // 返回实际读取的字符数
+
+
+	return;
 }
 
 void syscallFork(struct StackFrame *sf) {
@@ -346,25 +416,126 @@ void syscallSem(struct StackFrame *sf) {
 }
 
 void syscallSemInit(struct StackFrame *sf) {
-	// TODO: complete `SemInit`
-	return;
+	//TODO
+    int i;
+    for (i = 0; i < MAX_SEM_NUM; i++) {
+        if (sem[i].state == 0) // 找到一个未使用的信号量
+            break;
+    }
+    
+    if (i != MAX_SEM_NUM) {
+        sem[i].state = 1;
+        sem[i].value = (int)sf->edx; // 初始值
+        sem[i].pcb.next = &(sem[i].pcb);
+        sem[i].pcb.prev = &(sem[i].pcb); // 初始化等待队列
+        pcb[current].regs.eax = i; // 返回信号量ID
+    }
+    else {
+        pcb[current].regs.eax = -1; // 无可用信号量
+    }
+    
+    return;
 }
 
 void syscallSemWait(struct StackFrame *sf) {
-	// TODO: complete `SemWait` and note that you need to consider some special situations
+	//TODO
+    int i = (int)sf->edx;
+    if (i < 0 || i >= MAX_SEM_NUM) {
+        pcb[current].regs.eax = -1;
+        return;
+    }
+    
+    if (sem[i].state == 0) { // 信号量未初始化
+        pcb[current].regs.eax = -1;
+        return;
+    }
+    
+    if (sem[i].value > 0) { // 信号量值大于0，可以获取
+        sem[i].value--;
+        pcb[current].regs.eax = 0;
+        return;
+    }
+    else { // 信号量值为0，需要阻塞当前进程
+        // 将当前进程加入等待队列
+        pcb[current].blocked.next = sem[i].pcb.next;
+        pcb[current].blocked.prev = &(sem[i].pcb);
+        sem[i].pcb.next->prev = &(pcb[current].blocked);
+        sem[i].pcb.next = &(pcb[current].blocked);
+        
+        // 阻塞当前进程
+        pcb[current].state = STATE_BLOCKED;
+        pcb[current].sleepTime = -1; // 使用-1表示不是因为sleep阻塞
+        
+        asm volatile("int $0x20"); // 触发调度
+        
+        // 当进程被唤醒时，返回0表示成功
+        pcb[current].regs.eax = 0;
+    }
+    
+    return;
 }
 
 void syscallSemPost(struct StackFrame *sf) {
-	int i = (int)sf->edx;
-	ProcessTable *pt = NULL;
-	if (i < 0 || i >= MAX_SEM_NUM) {
-		pcb[current].regs.eax = -1;
-		return;
-	}
-	// TODO: complete other situations
+    int i = (int)sf->edx;
+    ProcessTable *pt = NULL;
+    
+    if (i < 0 || i >= MAX_SEM_NUM) {
+        pcb[current].regs.eax = -1;
+        return;
+    }
+    //todo
+    if (sem[i].state == 0) { // 信号量未初始化
+        pcb[current].regs.eax = -1;
+        return;
+    }
+    
+    if (sem[i].pcb.next == &(sem[i].pcb)) { // 等待队列为空
+        sem[i].value++; // 直接增加信号量值
+    }
+    else { // 等待队列非空，唤醒一个进程
+        // 获取等待队列中的第一个进程
+        pt = (ProcessTable*)((uint32_t)(sem[i].pcb.next) - (uint32_t)&(((ProcessTable*)0)->blocked));
+        // 从等待队列中移除该进程
+        sem[i].pcb.next = pt->blocked.next;
+        pt->blocked.next->prev = &(sem[i].pcb);
+        // 唤醒进程
+        pt->state = STATE_RUNNABLE;
+    }
+    
+    pcb[current].regs.eax = 0; // 返回成功
+    return;
 }
 
 void syscallSemDestroy(struct StackFrame *sf) {
-	// TODO: complete `SemDestroy`
-	return;
+	//TODO
+    int i = (int)sf->edx;
+    ProcessTable *pt = NULL;
+    
+    if (i < 0 || i >= MAX_SEM_NUM) {
+        pcb[current].regs.eax = -1;
+        return;
+    }
+    
+    if (sem[i].state == 0) { // 信号量未初始化
+        pcb[current].regs.eax = -1;
+        return;
+    }
+    
+    // 唤醒所有在此信号量上等待的进程
+    while (sem[i].pcb.next != &(sem[i].pcb)) {
+        // 获取等待队列中的第一个进程
+        pt = (ProcessTable*)((uint32_t)(sem[i].pcb.next) - (uint32_t)&(((ProcessTable*)0)->blocked));
+        // 从等待队列中移除该进程
+        sem[i].pcb.next = pt->blocked.next;
+        pt->blocked.next->prev = &(sem[i].pcb);
+        // 唤醒进程
+        pt->state = STATE_RUNNABLE;
+    }
+    
+    // 重置信号量状态
+    sem[i].state = 0;
+    sem[i].value = 0;
+    
+    pcb[current].regs.eax = 0; // 返回成功
+    return;
 }

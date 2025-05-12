@@ -22,3 +22,9 @@ void putChar(char ch) {
 	outByte(SERIAL_PORT, ch);
 }
 
+void log(char *str) {
+	while (*str) {
+		putChar(*str);
+		str++;
+	}
+}

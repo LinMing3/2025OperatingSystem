@@ -3,5 +3,5 @@
 
 void initSerial(void);
 void putChar(char);
-
+void log(char *);
 #endif
