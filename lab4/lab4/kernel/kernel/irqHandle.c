@@ -8,6 +8,7 @@
 #define SYS_SLEEP 4
 #define SYS_EXIT 5
 #define SYS_SEM 6
+#define SYS_GETPID 7
 
 #define STD_OUT 0
 #define STD_IN 1
@@ -37,6 +38,7 @@ void timerHandle(struct StackFrame *sf);
 void keyboardHandle(struct StackFrame *sf);
 void syscallHandle(struct StackFrame *sf);
 
+void syscallGetPid(struct StackFrame *sf);
 void syscallWrite(struct StackFrame *sf);
 void syscallRead(struct StackFrame *sf);
 void syscallFork(struct StackFrame *sf);
@@ -191,10 +193,17 @@ void syscallHandle(struct StackFrame *sf) {
 		case SYS_SEM:
 			syscallSem(sf);
 			break; // for SYS_SEM
+		case SYS_GETPID:
+			syscallGetPid(sf);
+			break; // for SYS_GETPID
 		default:break;
 	}
 }
 
+void syscallGetPid(struct StackFrame *sf) {
+    // current 是当前运行的进程ID
+    sf->eax = current;  // 将当前进程ID设置为返回值
+}
 void syscallWrite(struct StackFrame *sf) {
 	switch(sf->ecx) { // file descriptor
 		case STD_OUT:
@@ -440,7 +449,7 @@ void syscallSemInit(struct StackFrame *sf) {
 void syscallSemWait(struct StackFrame *sf) {
 	//TODO
     int i = (int)sf->edx;
-    if (i < 0 || i >= MAX_SEM_NUM) {
+    if (i < 0 || i >= MAX_SEM_NUM) {//不存在指定信号量
         pcb[current].regs.eax = -1;
         return;
     }
@@ -450,7 +459,7 @@ void syscallSemWait(struct StackFrame *sf) {
         return;
     }
     
-    if (sem[i].value > 0) { // 信号量值大于0，可以获取
+    if (sem[i].value > 0) { // 信号量值大于0，--
         sem[i].value--;
         pcb[current].regs.eax = 0;
         return;

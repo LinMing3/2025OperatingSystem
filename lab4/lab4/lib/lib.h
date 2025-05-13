@@ -10,6 +10,7 @@
 #define SYS_SLEEP 4
 #define SYS_EXIT 5
 #define SYS_SEM 6
+#define SYS_GETPID 7  
 
 #define STD_OUT 0
 #define STD_IN 1
@@ -41,4 +42,5 @@ int sem_post(sem_t *sem);
 
 int sem_destroy(sem_t *sem);
 
+pid_t getpid(void);
 #endif
