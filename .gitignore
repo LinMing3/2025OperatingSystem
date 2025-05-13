@@ -1,8 +1,12 @@
-#compile
+# 编译生成的文件
 *.o
 *.out
 *.exe
+*.bin
+*.elf
+*.img
 
-#dir
-/.vscode
-/.idea
+# IDE和编辑器
+/.vscode/
+/.idea/
+/.slides/
