@@ -221,64 +221,149 @@ void syscallHandle(struct StackFrame *sf) {
 }
 
 void syscallOpen(struct StackFrame *sf) {
-	int i;
-	char tmp = 0;
-	int length = 0;
-	int cond = 0;
-	int ret = 0;
-	int size = 0;
-	int baseAddr = (current + 1) * 0x100000; // base address of user process
-	char *str = (char*)sf->ecx + baseAddr; // file path
-	Inode fatherInode;
-	Inode destInode;
-	int fatherInodeOffset = 0;
-	int destInodeOffset = 0;
+    int i;
+    char tmp = 0;
+    int length = 0;
+    int cond = 0;
+    int ret = 0;
+    int size = 0;
+    int baseAddr = (current + 1) * 0x100000; // base address of user process
+    char *str = (char*)sf->ecx + baseAddr; // file path
+    Inode fatherInode;
+    Inode destInode;
+    int fatherInodeOffset = 0;
+    int destInodeOffset = 0;
 
-	ret = readInode(&sBlock, gDesc, &destInode, &destInodeOffset, str);
-	
-	if (ret == 0) { // file exist
-		// TODO: You need to consider the situations that O_DIRECTORY is set or not set, the file refer to a device or a file which is in use or not.
-	}
-	else { // try to create file
-		if ((sf->edx >> 2) % 2 == 0) { 
-			//TODO: if O_CREATE not set
-		}
-		if ((sf->edx >> 3) % 2 == 0) { 
-			//TODO: if O_DIRECTORY not set
-		}
-		else { 
-			//TODO: if O_DIRECTORY set
-		}
-		if (ret == -1) {
-			pcb[current].regs.eax = -1;
-			return;
-		}
-		for (i = 0; i < MAX_FILE_NUM; i ++) {
-			if (file[i].state == 0) { // not in use
-				file[i].state = 1;
-				file[i].inodeOffset = destInodeOffset;
-				file[i].offset = 0;
-				file[i].flags = sf->edx;
-				pcb[current].regs.eax = MAX_DEV_NUM + i;
-				return;
-			}
-		}
-		pcb[current].regs.eax = -1; // create success but no available file[]
-		return;
-	}
+    ret = readInode(&sBlock, gDesc, &destInode, &destInodeOffset, str);
+    
+    if (ret == 0) { // file exist
+        // 检查文件是否是设备
+        if (destInode.type == CHARACTER_TYPE || destInode.type == BLOCK_TYPE) {
+            // 对应设备号
+            int devIndex = (destInode.size >> 16) & 0xFFFF;
+            if (dev[devIndex].state == 0) { // 设备未使用
+                dev[devIndex].state = 1; // 标记设备为使用中
+                pcb[current].regs.eax = devIndex;
+                return;
+            }
+            else { // 设备已被使用
+                pcb[current].regs.eax = -1;
+                return;
+            }
+        }
+        
+        // 检查是否为目录类型请求
+        if ((sf->edx >> 3) % 2 == 1) { // O_DIRECTORY is set
+            if (destInode.type != DIRECTORY_TYPE) { // 如果不是目录
+                pcb[current].regs.eax = -1;
+                return;
+            }
+        } else { // O_DIRECTORY not set
+            if (destInode.type == DIRECTORY_TYPE) { // 如果是目录
+                pcb[current].regs.eax = -1;
+                return;
+            }
+        }
+        
+        // 为普通文件分配文件描述符
+        for (i = 0; i < MAX_FILE_NUM; i++) {
+            if (file[i].state == 0) { // 找到空闲文件描述符
+                file[i].state = 1;
+                file[i].inodeOffset = destInodeOffset;
+                file[i].offset = 0;
+                file[i].flags = sf->edx;
+                pcb[current].regs.eax = MAX_DEV_NUM + i;
+                return;
+            }
+        }
+        pcb[current].regs.eax = -1; // 没有可用的文件描述符
+        return;
+    }
+    else { // try to create file
+        if ((sf->edx >> 2) % 2 == 0) { // if O_CREATE not set
+            pcb[current].regs.eax = -1; // 文件不存在且没有设置创建标志
+            return;
+        }
+        
+        // 查找父目录
+        char fatherPath[128];
+        int len = stringLen(str);
+        if (str[len - 1] == '/')
+            str[len - 1] = 0;
+        
+        int pos = -1;
+        for (i = len - 1; i >= 0; i--) {
+            if (str[i] == '/') {
+                pos = i;
+                break;
+            }
+        }
+        
+        if (pos != -1) { // 如果有父目录
+            stringCpy(fatherPath, str, pos);
+            fatherPath[pos] = 0;
+            if (pos == 0) { // 如果父目录是根目录
+                fatherPath[0] = '/';
+                fatherPath[1] = 0;
+            }
+            ret = readInode(&sBlock, gDesc, &fatherInode, &fatherInodeOffset, fatherPath);
+            if (ret == -1) { // 父目录不存在
+                pcb[current].regs.eax = -1;
+                return;
+            }
+        }
+        
+        // 创建新文件或目录
+        if ((sf->edx >> 3) % 2 == 0) { // O_DIRECTORY not set - 创建普通文件
+            ret = allocInode(&sBlock, gDesc, &fatherInode, fatherInodeOffset, 
+                           &destInode, &destInodeOffset, str + pos + 1, REGULAR_TYPE);
+        }
+        else { // O_DIRECTORY set - 创建目录
+            ret = allocInode(&sBlock, gDesc, &fatherInode, fatherInodeOffset,
+                           &destInode, &destInodeOffset, str + pos + 1, DIRECTORY_TYPE);
+        }
+        
+        if (ret == -1) {
+            pcb[current].regs.eax = -1;
+            return;
+        }
+        
+        for (i = 0; i < MAX_FILE_NUM; i++) {
+            if (file[i].state == 0) { // not in use
+                file[i].state = 1;
+                file[i].inodeOffset = destInodeOffset;
+                file[i].offset = 0;
+                file[i].flags = sf->edx;
+                pcb[current].regs.eax = MAX_DEV_NUM + i;
+                return;
+            }
+        }
+        pcb[current].regs.eax = -1; // create success but no available file[]
+        return;
+    }
 }
 
 void syscallWrite(struct StackFrame *sf) {
-	switch(sf->ecx) { // file descriptor
-		case STD_OUT:
-			if (dev[STD_OUT].state == 1)
-				syscallWriteStdOut(sf);
-			break; // for STD_OUT
-		default:break;
-	}
-	// TODO: if refer to a file
-
-	return;
+    switch(sf->ecx) { // file descriptor
+        case STD_OUT:
+            if (dev[STD_OUT].state == 1)
+                syscallWriteStdOut(sf);
+            break; // for STD_OUT
+        default:
+            // 检查文件描述符是否在有效范围内
+            if (sf->ecx >= MAX_DEV_NUM && sf->ecx < MAX_DEV_NUM + MAX_FILE_NUM) {
+                // 检查文件是否打开
+                if (file[sf->ecx - MAX_DEV_NUM].state == 1)
+                    syscallWriteFile(sf);
+                else
+                    pcb[current].regs.eax = -1;
+            } else {
+                // 文件描述符无效
+                pcb[current].regs.eax = -1;
+            }
+            break;
+    }
+    return;
 }
 
 void syscallWriteStdOut(struct StackFrame *sf) {
@@ -324,44 +409,111 @@ void syscallWriteStdOut(struct StackFrame *sf) {
 }
 
 void syscallWriteFile(struct StackFrame *sf) {
-	if (file[sf->ecx - MAX_DEV_NUM].flags % 2 == 0) { // if O_WRITE is not set
-		pcb[current].regs.eax = -1;
-		return;
-	}
+    if (file[sf->ecx - MAX_DEV_NUM].flags % 2 == 0) { // if O_WRITE is not set
+        pcb[current].regs.eax = -1;
+        return;
+    }
 
-	int i = 0;
-	int j = 0;
-	int ret = 0;
-	int baseAddr = (current + 1) * 0x100000; // base address of user process
-	uint8_t *str = (uint8_t*)sf->edx + baseAddr; // buffer of user process
-	int size = sf->ebx;
-	uint8_t buffer[SECTOR_SIZE * SECTORS_PER_BLOCK];
-	int quotient = file[sf->ecx - MAX_DEV_NUM].offset / sBlock.blockSize;
-	int remainder = file[sf->ecx - MAX_DEV_NUM].offset % sBlock.blockSize;
+    int i = 0;
+    int j = 0;
+    int ret = 0;
+    int baseAddr = (current + 1) * 0x100000; // base address of user process
+    uint8_t *str = (uint8_t*)sf->edx + baseAddr; // buffer of user process
+    int size = sf->ebx;
+    uint8_t buffer[SECTOR_SIZE * SECTORS_PER_BLOCK];
+    int quotient = file[sf->ecx - MAX_DEV_NUM].offset / sBlock.blockSize;
+    int remainder = file[sf->ecx - MAX_DEV_NUM].offset % sBlock.blockSize;
 
-	Inode inode;
-	diskRead(&inode, sizeof(Inode), 1, file[sf->ecx - MAX_DEV_NUM].inodeOffset);
-	
-	// TODO: Complete the process of write to file.
+    Inode inode;
+    diskRead(&inode, sizeof(Inode), 1, file[sf->ecx - MAX_DEV_NUM].inodeOffset);
+    
+    // 计算要写入的数据块范围
+    int startBlock = quotient;
+    int endBlock = (file[sf->ecx - MAX_DEV_NUM].offset + size - 1) / sBlock.blockSize;
+    
+    // 如果起始位置不在块起始位置，需要先读取该块数据
+    if (remainder != 0) {
+        readBlock(&sBlock, &inode, startBlock, buffer);
+        
+        // 计算本块可以写入的数据量
+        int copySize = sBlock.blockSize - remainder;
+        if (copySize > size) 
+            copySize = size;
+        
+        // 复制数据到buffer
+        for (i = 0; i < copySize; i++)
+            buffer[remainder + i] = str[i];
+        
+        // 写入数据块
+        writeBlock(&sBlock, &inode, startBlock, buffer);
+        
+        // 更新已处理数据量和偏移
+        size -= copySize;
+        str += copySize;
+        startBlock++;
+    }
+    
+    // 处理完整的数据块
+    j = 0;
+    while (size >= sBlock.blockSize) {
+        // 直接将用户数据复制到buffer
+        for (i = 0; i < sBlock.blockSize; i++)
+            buffer[i] = str[j * sBlock.blockSize + i];
+        
+        // 写入数据块
+        writeBlock(&sBlock, &inode, startBlock + j, buffer);
+        
+        // 更新剩余大小
+        size -= sBlock.blockSize;
+        j++;
+    }
+    
+    // 处理最后一个可能不完整的数据块
+    if (size > 0) {
+        readBlock(&sBlock, &inode, startBlock + j, buffer);
+        
+        // 复制剩余数据
+        for (i = 0; i < size; i++)
+            buffer[i] = str[j * sBlock.blockSize + i];
+        
+        // 写入数据块
+        writeBlock(&sBlock, &inode, startBlock + j, buffer);
+    }
 
-	writeBlock(&sBlock, &inode, quotient + j, buffer);
-	if (size > inode.size - file[sf->ecx - MAX_DEV_NUM].offset)
-		inode.size = size + file[sf->ecx - MAX_DEV_NUM].offset;
-	diskWrite(&inode, sizeof(Inode), 1, file[sf->ecx - MAX_DEV_NUM].inodeOffset);
-	pcb[current].regs.eax = size;
-	file[sf->ecx - MAX_DEV_NUM].offset += size;
-	return;
+    // 更新inode的大小信息
+    if (file[sf->ecx - MAX_DEV_NUM].offset + sf->ebx > inode.size)
+        inode.size = file[sf->ecx - MAX_DEV_NUM].offset + sf->ebx;
+    
+    // 将更新后的inode写回磁盘
+    diskWrite(&inode, sizeof(Inode), 1, file[sf->ecx - MAX_DEV_NUM].inodeOffset);
+    
+    // 更新文件偏移量并返回写入的字节数
+    pcb[current].regs.eax = sf->ebx;
+    file[sf->ecx - MAX_DEV_NUM].offset += sf->ebx;
+    return;
 }
 
 void syscallRead(struct StackFrame *sf) {
-	switch(sf->ecx) { // file descriptor
-		case STD_IN:
-			if (dev[STD_IN].state == 1)
-				syscallReadStdIn(sf);
-			break; // for STD_IN
-		default:break;
-	}
-	// TODO: if refer to a file
+    switch(sf->ecx) { // file descriptor
+        case STD_IN:
+            if (dev[STD_IN].state == 1)
+                syscallReadStdIn(sf);
+            break; // for STD_IN
+        default:
+            // 检查文件描述符是否在有效范围内
+            if (sf->ecx >= MAX_DEV_NUM && sf->ecx < MAX_DEV_NUM + MAX_FILE_NUM) {
+                // 检查文件是否打开
+                if (file[sf->ecx - MAX_DEV_NUM].state == 1)
+                    syscallReadFile(sf);
+                else
+                    pcb[current].regs.eax = -1;
+            } else {
+                // 文件描述符无效
+                pcb[current].regs.eax = -1;
+            }
+            break;
+    }
+    return;
 }
 
 void syscallReadStdIn(struct StackFrame *sf) {
@@ -410,120 +562,341 @@ void syscallReadStdIn(struct StackFrame *sf) {
 }
 
 void syscallReadFile(struct StackFrame *sf) {
-	if ((file[sf->ecx - MAX_DEV_NUM].flags >> 1) % 2 == 0) { // if O_READ is not set
-		pcb[current].regs.eax = -1;
-		return;
-	}
+    if ((file[sf->ecx - MAX_DEV_NUM].flags >> 1) % 2 == 0) { // if O_READ is not set
+        pcb[current].regs.eax = -1;
+        return;
+    }
 
-	int i = 0;
-	int j = 0;
-	int baseAddr = (current + 1) * 0x100000; // base address of user process
-	uint8_t *str = (uint8_t*)sf->edx + baseAddr; // buffer of user process
-	int size = sf->ebx; // MAX_BUFFER_SIZE, don't need to reserve last byte
-	uint8_t buffer[SECTOR_SIZE * SECTORS_PER_BLOCK];
-	int quotient = file[sf->ecx - MAX_DEV_NUM].offset / sBlock.blockSize;
-	int remainder = file[sf->ecx - MAX_DEV_NUM].offset % sBlock.blockSize;
-	
-	Inode inode;
-	diskRead(&inode, sizeof(Inode), 1, file[sf->ecx - MAX_DEV_NUM].inodeOffset);
-	
-	// TODO: Complete the process of read to a file.
+    int i = 0;
+    int j = 0;
+    int baseAddr = (current + 1) * 0x100000; // base address of user process
+    uint8_t *str = (uint8_t*)sf->edx + baseAddr; // buffer of user process
+    int size = sf->ebx; // 要读取的最大字节数
+    uint8_t buffer[SECTOR_SIZE * SECTORS_PER_BLOCK];
+    int quotient = file[sf->ecx - MAX_DEV_NUM].offset / sBlock.blockSize;
+    int remainder = file[sf->ecx - MAX_DEV_NUM].offset % sBlock.blockSize;
+    
+    Inode inode;
+    diskRead(&inode, sizeof(Inode), 1, file[sf->ecx - MAX_DEV_NUM].inodeOffset);
+    
+    // 检查是否已经到达文件末尾
+    if (file[sf->ecx - MAX_DEV_NUM].offset >= inode.size) {
+        pcb[current].regs.eax = 0; // 返回0表示已经读到文件末尾
+        return;
+    }
+    
+    // 调整要读取的大小，不能超过文件总大小
+    if (file[sf->ecx - MAX_DEV_NUM].offset + size > inode.size) {
+        size = inode.size - file[sf->ecx - MAX_DEV_NUM].offset;
+    }
+    
+    int startBlock = quotient;
+    int endBlock = (file[sf->ecx - MAX_DEV_NUM].offset + size - 1) / sBlock.blockSize;
+    int bytesRead = 0;
+    
+    // 处理起始块的不完整读取
+    if (remainder != 0) {
+        readBlock(&sBlock, &inode, startBlock, buffer);
+        
+        // 计算从当前块能读取的字节数
+        int copySize = sBlock.blockSize - remainder;
+        if (copySize > size)
+            copySize = size;
+        
+        // 复制数据到用户缓冲区
+        for (i = 0; i < copySize; i++)
+            str[i] = buffer[remainder + i];
+        
+        // 更新已处理数据量
+        bytesRead += copySize;
+        size -= copySize;
+        startBlock++;
+    }
+    
+    // 处理完整的数据块
+    j = 0;
+    while (size >= sBlock.blockSize) {
+        readBlock(&sBlock, &inode, startBlock + j, buffer);
+        
+        // 复制整个块的数据到用户缓冲区
+        for (i = 0; i < sBlock.blockSize; i++)
+            str[bytesRead + i] = buffer[i];
+        
+        bytesRead += sBlock.blockSize;
+        size -= sBlock.blockSize;
+        j++;
+    }
+    
+    // 处理最后一个不完整的块
+    if (size > 0) {
+        readBlock(&sBlock, &inode, startBlock + j, buffer);
+        
+        // 复制剩余数据到用户缓冲区
+        for (i = 0; i < size; i++)
+            str[bytesRead + i] = buffer[i];
+        
+        bytesRead += size;
+    }
 
-	pcb[current].regs.eax = size;
-	file[sf->ecx - MAX_DEV_NUM].offset += size;
-	return;
+    // 更新文件偏移量并返回实际读取的字节数
+    pcb[current].regs.eax = bytesRead;
+    file[sf->ecx - MAX_DEV_NUM].offset += bytesRead;
+    return;
 }
 
 void syscallLseek(struct StackFrame *sf) {
-	int i = (int)sf->ecx; // file descriptor
-	int offset = (int)sf->edx;
-	Inode inode;
-	
-	if (i < MAX_DEV_NUM || i >= MAX_DEV_NUM + MAX_FILE_NUM) {
-		pcb[current].regs.eax = -1;
-		return;
-	}
-	if (file[i - MAX_DEV_NUM].state == 0) {
-		pcb[current].regs.eax = -1;
-		return;
-	}
+    int i = (int)sf->ecx; // 文件描述符
+    int offset = (int)sf->edx; // 偏移量
+    Inode inode;
+    
+    // 检查文件描述符是否有效
+    if (i < MAX_DEV_NUM || i >= MAX_DEV_NUM + MAX_FILE_NUM) {
+        pcb[current].regs.eax = -1;
+        return;
+    }
+    
+    // 检查文件是否打开
+    if (file[i - MAX_DEV_NUM].state == 0) {
+        pcb[current].regs.eax = -1;
+        return;
+    }
 
-	diskRead(&inode, sizeof(Inode), 1, file[sf->ecx - MAX_DEV_NUM].inodeOffset);
+    // 读取inode信息
+    diskRead(&inode, sizeof(Inode), 1, file[i - MAX_DEV_NUM].inodeOffset);
 
-	switch(sf->ebx) { // whence
-		case SEEK_SET:
-			// TODO: if SEEK_SET
-			break;
-		case SEEK_CUR:
-			// TODO: if SEEK_CUR
-			break;
-		case SEEK_END:
-			// TODO: if SEEK_END
-			break;
-		default:
-			break;
-	}
+    // 根据whence计算新的文件指针位置
+    int newOffset = 0;
+    switch(sf->ebx) { // whence
+        case SEEK_SET: // 从文件开头计算偏移
+            newOffset = offset;
+            break;
+        case SEEK_CUR: // 从当前位置计算偏移
+            newOffset = file[i - MAX_DEV_NUM].offset + offset;
+            break;
+        case SEEK_END: // 从文件末尾计算偏移
+            newOffset = inode.size + offset;
+            break;
+        default:
+            pcb[current].regs.eax = -1;
+            return;
+    }
+    
+    // 检查新的文件指针位置是否有效（不能为负数）
+    if (newOffset < 0) {
+        pcb[current].regs.eax = -1;
+        return;
+    }
+    
+    // 设置新的文件指针位置
+    file[i - MAX_DEV_NUM].offset = newOffset;
+    
+    // 返回新的文件指针位置
+    pcb[current].regs.eax = newOffset;
+    return;
 }
 
 void syscallClose(struct StackFrame *sf) {
-	int i = (int)sf->ecx;
-	if (i < MAX_DEV_NUM || i >= MAX_DEV_NUM + MAX_FILE_NUM) { 
-		// TODO: dev, can not be closed, or out of range
-		
-		return;
-	}
-	if (file[i - MAX_DEV_NUM].state == 0) { 
-		// TODO: not in use
-
-		return;
-	}
-	file[i - MAX_DEV_NUM].state = 0;
-	file[i - MAX_DEV_NUM].inodeOffset = 0;
-	file[i - MAX_DEV_NUM].offset = 0;
-	file[i - MAX_DEV_NUM].flags = 0;
-	pcb[current].regs.eax = 0;
-	return;
+    int i = (int)sf->ecx;
+    
+    // 如果是设备文件描述符
+    if (i >= 0 && i < MAX_DEV_NUM) {
+        // 检查设备是否打开
+        if (dev[i].state == 0) {
+            pcb[current].regs.eax = -1;  // 设备未打开
+            return;
+        }
+        
+        // 关闭设备
+        dev[i].state = 0;
+        pcb[current].regs.eax = 0;
+        return;
+    }
+    
+    // 如果是普通文件描述符
+    if (i >= MAX_DEV_NUM && i < MAX_DEV_NUM + MAX_FILE_NUM) {
+        // 检查文件是否打开
+        if (file[i - MAX_DEV_NUM].state == 0) {
+            pcb[current].regs.eax = -1;  // 文件未打开
+            return;
+        }
+        
+        // 关闭文件，释放相关资源
+        file[i - MAX_DEV_NUM].state = 0;
+        file[i - MAX_DEV_NUM].inodeOffset = 0;
+        file[i - MAX_DEV_NUM].offset = 0;
+        file[i - MAX_DEV_NUM].flags = 0;
+        
+        pcb[current].regs.eax = 0;  // 返回成功
+        return;
+    }
+    
+    // 文件描述符超出有效范围
+    pcb[current].regs.eax = -1;
+    return;
 }
 
 void syscallRemove(struct StackFrame *sf) {
-	int i;
-	char tmp = 0;
-	int length = 0;
-	int cond = 0;
-	int ret = 0;
-	int size = 0;
-	int baseAddr = (current + 1) * 0x100000; // base address of user process
-	char *str = (char*)sf->ecx + baseAddr; // file path
-	Inode fatherInode;
-	Inode destInode;
-	int fatherInodeOffset = 0;
-	int destInodeOffset = 0;
+    int i;
+    char tmp = 0;
+    int length = 0;
+    int cond = 0;
+    int ret = 0;
+    int size = 0;
+    int baseAddr = (current + 1) * 0x100000; // base address of user process
+    char *str = (char*)sf->ecx + baseAddr; // file path
+    Inode fatherInode;
+    Inode destInode;
+    int fatherInodeOffset = 0;
+    int destInodeOffset = 0;
 
-	ret = readInode(&sBlock, gDesc, &destInode, &destInodeOffset, str);
+    ret = readInode(&sBlock, gDesc, &destInode, &destInodeOffset, str);
 
-	if (ret == 0) { // file exist
-		// TODO: You need to consider the situations that the file refer to a device or a file in use.
-		
-		// free inode
-		if (destInode.type == REGULAR_TYPE) {
-			// TODO: If REGULAR_TYPE
-		}
-		else if (destInode.type == DIRECTORY_TYPE) {
-			// TODO: If DIRECTORY_TYPE
-		}
-		if (ret == -1) {
-			pcb[current].regs.eax = -1;
-			return;
-		}
-		pcb[current].regs.eax = 0;
-		return;
-	}
-	else { // file not exist
-		pcb[current].regs.eax = -1;
-		return;
-	}
+    if (ret == 0) { // file exist
+        // 检查是否是设备文件
+        if (destInode.type == CHARACTER_TYPE || destInode.type == BLOCK_TYPE) {
+            // 不允许删除设备文件
+            pcb[current].regs.eax = -1;
+            return;
+        }
+        
+        // 检查文件是否正在被使用
+        if (destInode.type == REGULAR_TYPE) {
+            // 检查文件是否被打开
+            for (i = 0; i < MAX_FILE_NUM; i++) {
+                if (file[i].state == 1 && file[i].inodeOffset == destInodeOffset) {
+                    // 文件正在使用中，不能删除
+                    pcb[current].regs.eax = -1;
+                    return;
+                }
+            }
+            
+            // 处理普通文件的删除
+            // 找到父目录
+            char fatherPath[128];
+            int len = stringLen(str);
+            if (str[len - 1] == '/')
+                str[len - 1] = 0;
+            
+            int pos = -1;
+            for (i = len - 1; i >= 0; i--) {
+                if (str[i] == '/') {
+                    pos = i;
+                    break;
+                }
+            }
+            
+            // 读取父目录信息
+            if (pos == 0) { // 如果父目录是根目录
+                fatherPath[0] = '/';
+                fatherPath[1] = 0;
+            } else {
+                stringCpy(fatherPath, str, pos);
+                fatherPath[pos] = 0;
+            }
+            
+            ret = readInode(&sBlock, gDesc, &fatherInode, &fatherInodeOffset, fatherPath);
+            if (ret == -1) {
+                pcb[current].regs.eax = -1;
+                return;
+            }
+            
+            // 从父目录中删除文件条目并释放inode
+            char fileName[128];
+            stringCpy(fileName, str + pos + 1, len - pos - 1);
+            fileName[len - pos - 1] = 0;
+            
+            ret = freeInode(&sBlock, gDesc, &fatherInode, fatherInodeOffset, 
+                           &destInode, destInodeOffset, fileName, REGULAR_TYPE);
+            
+            if (ret == -1) {
+                pcb[current].regs.eax = -1;
+                return;
+            }
+            
+            pcb[current].regs.eax = 0;
+            return;
+        }
+        else if (destInode.type == DIRECTORY_TYPE) {
+            // 检查目录是否为空
+            DirEntry *dirEntry = (DirEntry *)malloc(sizeof(DirEntry) * sBlock.blockSize);
+            if (dirEntry == NULL) {
+                pcb[current].regs.eax = -1;
+                return;
+            }
+            
+            // 读取目录内容
+            readBlock(&sBlock, &destInode, 0, (uint8_t *)dirEntry);
+            
+            // 检查目录是否为空（只有 "." 和 ".." 两个条目）
+            int entryCount = 0;
+            int maxEntries = sBlock.blockSize / sizeof(DirEntry);
+            for (i = 0; i < maxEntries; i++) {
+                if (dirEntry[i].inode != 0) {
+                    entryCount++;
+                    // 忽略 "." 和 ".." 条目
+                    if (stringCmp(dirEntry[i].name, ".",1) != 0 && 
+                        stringCmp(dirEntry[i].name, "..",2) != 0) {
+                        // 目录非空，不能删除
+                        free(dirEntry);
+                        pcb[current].regs.eax = -1;
+                        return;
+                    }
+                }
+            }
+            
+            free(dirEntry);
+            
+            // 找到父目录
+            char fatherPath[128];
+            int len = stringLen(str);
+            if (str[len - 1] == '/')
+                str[len - 1] = 0;
+            
+            int pos = -1;
+            for (i = len - 1; i >= 0; i--) {
+                if (str[i] == '/') {
+                    pos = i;
+                    break;
+                }
+            }
+            
+            // 读取父目录信息
+            if (pos == 0) { // 如果父目录是根目录
+                fatherPath[0] = '/';
+                fatherPath[1] = 0;
+            } else {
+                stringCpy(fatherPath, str, pos);
+                fatherPath[pos] = 0;
+            }
+            
+            ret = readInode(&sBlock, gDesc, &fatherInode, &fatherInodeOffset, fatherPath);
+            if (ret == -1) {
+                pcb[current].regs.eax = -1;
+                return;
+            }
+            
+            // 从父目录中删除目录条目并释放inode
+            char dirName[128];
+            stringCpy(dirName, str + pos + 1, len - pos - 1);
+            dirName[len - pos - 1] = 0;
+            
+            ret = freeInode(&sBlock, gDesc, &fatherInode, fatherInodeOffset, 
+                           &destInode, destInodeOffset, dirName, DIRECTORY_TYPE);
+            
+            if (ret == -1) {
+                pcb[current].regs.eax = -1;
+                return;
+            }
+            
+            pcb[current].regs.eax = 0;
+            return;
+        }
+    }
+    else { // file not exist
+        pcb[current].regs.eax = -1;
+        return;
+    }
 }
-
 void syscallFork(struct StackFrame *sf) {
 	int i, j;
 	for (i = 0; i < MAX_PCB_NUM; i++) {

@@ -13,38 +13,57 @@ union DirEntry {
 typedef union DirEntry DirEntry;
 
 int ls(char *destFilePath) {
-	printf("ls %s\n", destFilePath);
-	int i = 0;
-	int fd = 0;
-	int ret = 0;
-	DirEntry *dirEntry = 0;
-	uint8_t buffer[512 * 2];
-	fd = open(destFilePath, O_READ | O_DIRECTORY);
-	if (fd == -1)
-		return -1;
-	ret = read(fd, buffer, 512 * 2);
-	while (ret != 0) {
-		// TODO: Complete 'ls'.
-	}
-	printf("\n");
-	close(fd);
-	return 0;
+    printf("ls %s\n", destFilePath);
+    int i = 0;
+    int fd = 0;
+    int ret = 0;
+    DirEntry *dirEntry = 0;
+    uint8_t buffer[512 * 2];
+    fd = open(destFilePath, O_READ | O_DIRECTORY);
+    if (fd == -1)
+        return -1;
+    ret = read(fd, buffer, 512 * 2);
+    while (ret != 0) {
+        // 处理读取到的目录项数据
+        dirEntry = (DirEntry*)buffer;
+        for (i = 0; i < ret / sizeof(DirEntry); i++) {
+            // 检查目录项是否有效（inode不为0表示有效）
+            if (dirEntry[i].inode != 0) {
+                // 打印文件名
+                printf("%s  ", dirEntry[i].name);
+            }
+        }
+        // 继续读取下一块目录数据
+        ret = read(fd, buffer, 512 * 2);
+    }
+    printf("\n");
+    close(fd);
+    return 0;
 }
 
 int cat(char *destFilePath) {
-	printf("cat %s\n", destFilePath);
-	int fd = 0;
-	int ret = 0;
-	uint8_t buffer[512 * 2];
-	fd = open(destFilePath, O_READ);
-	if (fd == -1)
-		return -1;
-	ret = read(fd, buffer, 512 * 2);
-	while (ret != 0) {
-		// TODO: COmplete 'cat'
-	}
-	close(fd);
-	return 0;
+    printf("cat %s\n", destFilePath);
+    int fd = 0;
+    int ret = 0;
+    uint8_t buffer[512 * 2];
+    int i = 0;
+
+    fd = open(destFilePath, O_READ);
+    if (fd == -1)
+        return -1;
+    
+    ret = read(fd, buffer, 512 * 2);
+    while (ret != 0) {
+        // 将读取到的内容逐字符打印出来
+        for (i = 0; i < ret; i++) {
+            printf("%c", buffer[i]);
+        }
+        // 继续读取文件内容
+        ret = read(fd, buffer, 512 * 2);
+    }
+    
+    close(fd);
+    return 0;
 }
 
 int uEntry(void) {
