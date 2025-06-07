@@ -29,8 +29,14 @@ int ls(char *destFilePath) {
         for (i = 0; i < ret / sizeof(DirEntry); i++) {
             // 检查目录项是否有效（inode不为0表示有效）
             if (dirEntry[i].inode != 0) {
-                // 打印文件名
-                printf("%s  ", dirEntry[i].name);
+                // 额外检查文件名的有效性
+                if (dirEntry[i].name[0] >= 32 && dirEntry[i].name[0] < 127) {
+                    // 只打印ASCII可打印字符开头的文件名
+                    printf("%s  ", dirEntry[i].name);
+                } else {
+                    // 显示有问题的目录项的inode号
+                    printf("[无效条目:inode=%d]  ", dirEntry[i].inode);
+                }
             }
         }
         // 继续读取下一块目录数据

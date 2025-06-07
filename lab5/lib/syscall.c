@@ -59,24 +59,24 @@ int open (char *path, int flags) {
 	return syscall(SYS_OPEN, (uint32_t)path, (uint32_t)flags, 0, 0, 0);
 }
 
-int write (int fd, uint8_t *buffer, int size) {
-	//TODO: Complete the function 'write' just like the function 'open'.
+int write(int fd, uint8_t *buffer, int size) {
+    return syscall(SYS_WRITE, (uint32_t)fd, (uint32_t)buffer, (uint32_t)size, 0, 0);
 }
 
-int read (int fd, uint8_t *buffer, int size) {
-	//TODO: Complete the function 'read' just like the function 'open'.
+int read(int fd, uint8_t *buffer, int size) {
+    return syscall(SYS_READ, (uint32_t)fd, (uint32_t)buffer, (uint32_t)size, 0, 0);
 }
 
-int lseek (int fd, int offset, int whence) {
-	//TODO: Complete the function 'lseek' just like the function 'open'.
+int lseek(int fd, int offset, int whence) {
+    return syscall(SYS_LSEEK, (uint32_t)fd, (uint32_t)offset, (uint32_t)whence, 0, 0);
 }
 
-int close (int fd) {
-	//TODO: Complete the function 'close' just like the function 'open'.
+int close(int fd) {
+    return syscall(SYS_CLOSE, (uint32_t)fd, 0, 0, 0, 0);
 }
 
-int remove (char *path) {
-	//TODO: Complete the function 'remove' just like the function 'open'.
+int remove(char *path) {
+    return syscall(SYS_REMOVE, (uint32_t)path, 0, 0, 0, 0);
 }
 
 int dec2Str(int decimal, char *buffer, int size, int count);

@@ -181,7 +181,7 @@ uint32_t loadUMain(void) {
 
 uint32_t loadUMain(void) {
 	int i = 0;
-	int phoff = 0x34; // program header offset
+	// int phoff = 0x34; // program header offset
 	int offset = 0x1000; // .text section offset
 	uint32_t elf = 0x200000; // physical memory addr to load
 	uint32_t uMainEntry = 0x200000;
@@ -196,8 +196,8 @@ uint32_t loadUMain(void) {
 	}
 	
 	uMainEntry = ((struct ELFHeader *)elf)->entry; // entry address of the program
-	phoff = ((struct ELFHeader *)elf)->phoff;
-	offset = ((struct ProgramHeader *)(elf + phoff))->off;
+	// phoff = ((struct ELFHeader *)elf)->phoff;
+	// offset = ((struct ProgramHeader *)(elf + phoff))->off;
 
 	for (i = 0; i < 200 * 512; i ++) {
 		*(uint8_t *)(elf + i) = *(uint8_t *)(elf + i + offset);
